@@ -1,0 +1,277 @@
+// AI Document Analyzer - Comprehensive Database Schema
+// Supports vector search, document processing, and advanced analytics
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// User model - integrated with Clerk authentication
+model User {
+  id              String   @id // Clerk user ID
+  email           String   @unique
+  firstName       String?
+  lastName        String?
+  imageUrl        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relationships
+  documents       Document[]
+  chats           Chat[]
+  analytics       UserAnalytics[]
+  preferences     UserPreferences?
+  
+  @@map("users")
+}
+
+// Document model - enhanced for enterprise features
+model Document {
+  id              Int      @id @default(autoincrement())
+  userId          String
+  fileName        String
+  fileKey         String   @unique
+  fileUrl         String?
+  fileSize        Int?
+  fileType        String
+  mimeType        String?
+  status          DocumentStatus @default(PROCESSING)
+  
+  // Content and processing
+  extractedText   String?
+  summary         String?
+  wordCount       Int?
+  pageCount       Int?
+  language        String   @default("en")
+  
+  // Metadata and analytics
+  uploadSource    String?  // web, api, mobile
+  processingTime  Int?     // milliseconds
+  embeddingModel  String?  // model used for embeddings
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relationships
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chats           Chat[]
+  chunks          DocumentChunk[]
+  analytics       DocumentAnalytics[]
+  
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([fileType])
+  @@map("documents")
+}
+
+// Document chunks for vector search
+model DocumentChunk {
+  id              Int      @id @default(autoincrement())
+  documentId      Int
+  chunkIndex      Int
+  content         String
+  
+  // Vector search fields
+  embedding       String   // JSON string of vector embedding
+  embeddingModel  String   // Model used for embedding
+  tokens          Int?     // Token count
+  
+  // Chunk metadata
+  startPage       Int?
+  endPage         Int?
+  startChar       Int?
+  endChar         Int?
+  chunkType       ChunkType @default(TEXT)
+  
+  createdAt       DateTime @default(now())
+  
+  // Relationships
+  document        Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  
+  @@index([documentId])
+  @@index([chunkIndex])
+  @@map("document_chunks")
+}
+
+// Enhanced chat model
+model Chat {
+  id              Int      @id @default(autoincrement())
+  userId          String
+  title           String   @default("New Chat")
+  documentId      Int?
+  
+  // Chat metadata
+  messageCount    Int      @default(0)
+  tokenUsage      Int      @default(0)
+  model           String   @default("gpt-4")
+  temperature     Float    @default(0.7)
+  isArchived      Boolean  @default(false)
+  isStarred       Boolean  @default(false)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relationships
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document        Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  messages        Message[]
+  
+  @@index([userId])
+  @@index([documentId])
+  @@index([createdAt])
+  @@map("chats")
+}
+
+// Enhanced message model
+model Message {
+  id              Int      @id @default(autoincrement())
+  chatId          Int
+  content         String
+  role            MessageRole
+  
+  // Message metadata
+  model           String?
+  tokens          Int?
+  processingTime  Int?     // milliseconds
+  
+  // Context and citations
+  sources         Json?    // Array of source chunks/documents
+  confidence      Float?   // AI confidence score
+  
+  createdAt       DateTime @default(now())
+  
+  // Relationships
+  chat            Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  
+  @@index([chatId])
+  @@index([role])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+// User preferences and settings
+model UserPreferences {
+  id              Int      @id @default(autoincrement())
+  userId          String   @unique
+  
+  // UI preferences
+  theme           Theme    @default(SYSTEM)
+  language        String   @default("en")
+  
+  // AI preferences
+  defaultModel    String   @default("gpt-4")
+  temperature     Float    @default(0.7)
+  maxTokens       Int      @default(4000)
+  
+  // Feature preferences
+  autoSave        Boolean  @default(true)
+  notifications   Boolean  @default(true)
+  analytics       Boolean  @default(true)
+  
+  // Advanced settings
+  embeddingModel  String   @default("text-embedding-3-small")
+  chunkSize       Int      @default(1000)
+  chunkOverlap    Int      @default(200)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relationships
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("user_preferences")
+}
+
+// User analytics and usage tracking
+model UserAnalytics {
+  id              Int      @id @default(autoincrement())
+  userId          String
+  
+  // Usage metrics
+  documentsUploaded Int    @default(0)
+  totalQuestions    Int    @default(0)
+  totalTokens       Int    @default(0)
+  totalChatTime     Int    @default(0) // minutes
+  
+  // Period tracking
+  period          AnalyticsPeriod
+  date            DateTime
+  
+  createdAt       DateTime @default(now())
+  
+  // Relationships
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, period, date])
+  @@index([userId])
+  @@index([date])
+  @@map("user_analytics")
+}
+
+// Document-specific analytics
+model DocumentAnalytics {
+  id              Int      @id @default(autoincrement())
+  documentId      Int
+  
+  // Engagement metrics
+  viewCount       Int      @default(0)
+  questionCount   Int      @default(0)
+  shareCount      Int      @default(0)
+  downloadCount   Int      @default(0)
+  
+  // Performance metrics
+  avgResponseTime Float?   // average response time in ms
+  accuracyScore   Float?   // user feedback based accuracy
+  
+  // Time tracking
+  totalChatTime   Int      @default(0) // minutes spent with this document
+  lastAccessed    DateTime @default(now())
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relationships
+  document        Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  
+  @@unique([documentId])
+  @@map("document_analytics")
+}
+
+// Enums
+enum DocumentStatus {
+  PROCESSING
+  READY
+  ERROR
+  ARCHIVED
+}
+
+enum ChunkType {
+  TEXT
+  HEADER
+  TABLE
+  IMAGE_CAPTION
+  FOOTNOTE
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum Theme {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+enum AnalyticsPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
